@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "mcp-history": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["server.py"],
+      "description": "MCP tools: ngay_nay_nam_xua, tin_tuc_vnexpress, truyen_ngu_ngon"
+    }
+  }
+}

@@ -6,7 +6,137 @@ import xml.etree.ElementTree as ET
 import sys
 import logging
 import re
-import random
+def load_lich_lam_viec():
+    global _lich_cache
+    if _lich_cache is not None:
+        return _lich_cache
+    
+    try:
+        import pandas as pd
+        df = pd.read_excel(LICH_LICH_VIEC_FILE)
+        
+        events = []
+        current_date = None
+        current_time = None
+        
+        for _, row in df.iterrows():
+            thu_ngay = row.get('THỨ NGÀY', '')
+            
+            if pd.notna(thu_ngay) and str(thu_ngay).strip():
+                current_date = str(thu_ngay).replace('\n', ' ')
+                current_time = str(row.get('THỜI GIAN', '')) if pd.notna(row.get('THỜI GIAN')) else ''
+            else:
+                current_time = str(row.get('THỜI GIAN', '')) if pd.notna(row.get('THỜI GIAN')) else ''
+            
+            noi_dung = str(row.get('NỘI DUNG CÔNG VIỆC', '')) if pd.notna(row.get('NỘI DUNG CÔNG VIỆC')) else ''
+            chu_tri = str(row.get('CHỦ TRÌ', '')) if pd.notna(row.get('CHỦ TRÌ')) else ''
+            dia_diem = str(row.get('ĐỊA ĐIỂM', '')) if pd.notna(row.get('ĐỊA ĐIỂM')) else ''
+            thanh_phan = str(row.get('THÀNH PHẦN', '')) if pd.notna(row.get('THÀNH PHẦN')) else ''
+            
+            if noi_dung:
+                events.append({
+                    'thu_ngay': current_date,
+                    'thoi_gian': current_time,
+                    'noi_dung': noi_dung,
+                    'chu_tri': chu_tri,
+                    'dia_diem': dia_diem,
+                    'thanh_phan': thanh_phan
+                })
+        
+        _lich_cache = events
+        return events
+    except Exception as e:
+        logger.error(f"Lỗi load_lich_lam_viec: {e}")
+        return []
+
+def search_lich_cong_tac(query):
+    events = load_lich_lam_viec()
+    query_lower = query.lower()
+    
+    results = []
+    
+    for event in events:
+        match = False
+        thu_ngay = event.get('thu_ngay', '') or ''
+        thoi_gian = event.get('thoi_gian', '') or ''
+        noi_dung = event.get('noi_dung', '').lower()
+        chu_tri = event.get('chu_tri', '').lower()
+        dia_diem = event.get('dia_diem', '') or ''
+        thanh_phan = event.get('thanh_phan', '') or ''
+        
+        if query_lower in thu_ngay.lower():
+            match = True
+        elif query_lower in ['thứ hai', 'thứ 2', 'hai']:
+            if 'hai' in thu_ngay.lower():
+                match = True
+        elif query_lower in ['thứ ba', 'thứ 3', 'ba']:
+            if 'ba' in thu_ngay.lower():
+                match = True
+        elif query_lower in ['thứ tư', 'thứ 4', 'tư']:
+            if 'tư' in thu_ngay.lower():
+                match = True
+        elif query_lower in ['thứ năm', 'thứ 5', 'năm']:
+            if 'năm' in thu_ngay.lower():
+                match = True
+        elif query_lower in ['thứ sáu', 'thứ 6', 'sáu']:
+            if 'sáu' in thu_ngay.lower():
+                match = True
+        elif query_lower in ['thứ bảy', 'thứ 7', 'bảy']:
+            if 'bảy' in thu_ngay.lower():
+                match = True
+        elif query_lower in ['chủ nhật', 'cn']:
+            if 'cn' in thu_ngay.lower():
+                match = True
+        elif any(x in query_lower for x in ['ngày', '/', '-']):
+            if query_lower.split()[0] in thu_ngay.lower():
+                match = True
+        elif query_lower in chu_tri:
+            match = True
+        elif query_lower in noi_dung:
+            match = True
+        elif query_lower in thanh_phan.lower():
+            match = True
+        
+        if match:
+            results.append(event)
+    
+    return results
+
+def format_lich_cong_tac(events):
+    if not events:
+        return "Không tìm thấy lịch công tác phù hợp."
+    
+    result = f"Tìm thấy {len(events)} sự kiện:\n\n"
+    
+    current_thu = None
+    for event in events:
+        thu_ngay = event.get('thu_ngay', '') or ''
+        if thu_ngay != current_thu:
+            result += f"{'='*50}\n"
+            result += f"📅 {thu_ngay}\n"
+            result += f"{'='*50}\n"
+            current_thu = thu_ngay
+        
+        thoi_gian = event.get('thoi_gian', '')
+        noi_dung = event.get('noi_dung', '')
+        chu_tri = event.get('chu_tri', '')
+        dia_diem = event.get('dia_diem', '')
+        thanh_phan = event.get('thanh_phan', '')
+        
+        result += f"⏰ {thoi_gian}\n"
+        result += f"📋 {noi_dung}\n"
+        if chu_tri:
+            result += f"👤 Chủ trì: {chu_tri}\n"
+        if dia_diem:
+            result += f"📍 Địa điểm: {dia_diem}\n"
+        if thanh_phan:
+            result += f"👥 Thành phần: {thanh_phan}\n"
+        result += "\n"
+    
+    return result
+
+LICH_LICH_VIEC_FILE = "lich_lam_viec.xlsx"
+_lich_cache = None
 
 logger = logging.getLogger("MCP-History")
 logging.basicConfig(level=logging.INFO)
@@ -150,6 +280,26 @@ def truyen_ngu_ngon() -> dict:
     story = random.choice(stories)
     logger.info(f"Trả về câu chuyện ({len(story)} ký tự)")
     return {"success": True, "content": f"📖 Câu chuyện:\n\n{story}"}
+
+@mcp.tool()
+def lich_cong_tac(query: str = "") -> dict:
+    """
+    📅 Tra cứu lịch công tác, lịch làm việc từ file lich_lam_viec.xlsx
+    
+    Cách hỏi:
+    - "lich cong tac thu hai" - Lịch thứ Hai
+    - "lich ngay 22/4" - Lịch ngày 22/4
+    - "hieu truong co lich gi" - Hỏi lịch của Hiệu trưởng
+    - "họp" - Tìm các cuộc họp trong tuần
+    - "toan bo lich" - Toàn bộ lịch tuần
+    """
+    if not query.strip():
+        events = load_lich_lam_viec()
+        return {"success": True, "content": format_lich_cong_tac(events)}
+    
+    events = search_lich_cong_tac(query)
+    logger.info(f"Tìm kiếm lịch công tác: '{query}' - Kết quả: {len(events)}")
+    return {"success": True, "content": format_lich_cong_tac(events)}
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")
